@@ -1,0 +1,57 @@
+services:
+  redis:
+    image: ${REDIS_IMAGE}
+    container_name: redis-node25
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      TZ: ${TIMEZONE}
+    command: ["redis-server", "/data/redis.conf"]
+    volumes:
+      - ${NFS_MOUNT}/redis/node25:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -h 127.0.0.1 -p ${REDIS_PORT} -a ${REDIS_PASSWORD} ping | grep -q PONG"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  redis-sentinel:
+    image: ${REDIS_IMAGE}
+    container_name: redis-sentinel-node25
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      TZ: ${TIMEZONE}
+    command: ["redis-sentinel", "/data/sentinel.conf"]
+    volumes:
+      - ${NFS_MOUNT}/redis/sentinel-node25:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -h 127.0.0.1 -p ${SENTINEL_PORT} ping | grep -q PONG"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  gitlab:
+    image: ${GITLAB_IMAGE}
+    container_name: gitlab-node25
+    restart: unless-stopped
+    hostname: gitlab-node25
+    shm_size: 256m
+    ports:
+      - "${GITLAB_BACKEND_HTTP_PORT}:${GITLAB_LISTEN_PORT}"
+      - "${GITLAB_BACKEND_SSH_PORT}:22"
+    environment:
+      TZ: ${TIMEZONE}
+      GITLAB_OMNIBUS_CONFIG: |
+        from_file('/etc/gitlab/gitlab.rb')
+    volumes:
+      - ${NFS_MOUNT}/gitlab/node25/config:/etc/gitlab
+      - ${NFS_MOUNT}/gitlab/node25/logs:/var/log/gitlab
+      - ${NFS_MOUNT}/gitlab/node25/data:/var/opt/gitlab
+      - ${NFS_MOUNT}/gitlab/shared:/mnt/gitlab-shared
+    depends_on:
+      redis:
+        condition: service_healthy

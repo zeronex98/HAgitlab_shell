@@ -1,0 +1,39 @@
+services:
+  postgresql:
+    image: ${POSTGRES_IMAGE}
+    container_name: postgres-node29
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      TZ: ${TIMEZONE}
+      PGTZ: ${TIMEZONE}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C --auth-host=scram-sha-256 --auth-local=trust
+    command:
+      - postgres
+      - -c
+      - config_file=/etc/postgresql/postgresql.conf
+    volumes:
+      - ${NFS_MOUNT}/postgresql/data:/var/lib/postgresql/data
+      - ${NFS_MOUNT}/postgresql/conf:/etc/postgresql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p ${POSTGRES_PORT} -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+
+  redis-sentinel:
+    image: ${REDIS_IMAGE}
+    container_name: redis-sentinel-node29
+    restart: unless-stopped
+    network_mode: host
+    command: ["redis-sentinel", "/data/sentinel.conf"]
+    volumes:
+      - ${NFS_MOUNT}/redis/sentinel-node29:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -h 127.0.0.1 -p ${SENTINEL_PORT} ping | grep -q PONG"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
