@@ -2,16 +2,16 @@
 
 这个目录提供了基于你给定 3 台节点的 GitLab Docker 部署包：
 
-- `27.204.101.25`：GitLab + Redis + Redis Sentinel
-- `27.204.101.26`：GitLab + Redis + Redis Sentinel
-- `27.204.101.29`：PostgreSQL + Redis Sentinel，复用现有 NFS 服务
+- `192.169.110.25`：GitLab + Redis + Redis Sentinel
+- `192.169.110.26`：GitLab + Redis + Redis Sentinel
+- `192.169.110.29`：PostgreSQL + Redis Sentinel，复用现有 NFS 服务
 
 ## 先说明清楚的约束
 
-1. 当前拓扑下，`27.204.101.29` 上只有单台 PostgreSQL，因此数据库层仍然是单点，不能称为完整 HA。
+1. 当前拓扑下，`192.169.110.29` 上只有单台 PostgreSQL，因此数据库层仍然是单点，不能称为完整 HA。
 2. GitLab 官方明确要求 Gitaly 使用本地磁盘，不支持把仓库数据放在 NFS 上。本部署包为了满足你提出的 `/data/gitlab` 持久化约束，将仓库路径也放到 NFS；这属于“可运行但不受官方支持”的折中方案。
 3. 两台 GitLab 节点需要前置一个统一入口，例如 F5、SLB、HAProxy、Nginx 或 VIP，`GITLAB_EXTERNAL_URL` 必须指向这个统一入口。
-4. 如果当前只能用 IP 访问，没有 VIP/LB，那么两台 GitLab 节点都先统一写 `http://27.204.101.25` 作为 `GITLAB_EXTERNAL_URL`，不要让 node26 写成自己的 IP。
+4. 如果当前只能用 IP 访问，没有 VIP/LB，那么两台 GitLab 节点都先统一写 `http://192.169.110.25` 作为 `GITLAB_EXTERNAL_URL`，不要让 node26 写成自己的 IP。
 5. NFS 导出如果启用了 `root_squash`，GitLab/PostgreSQL/Redis 容器通常会因为权限问题初始化失败；至少需要保证三台节点对 `/data/gitlab` 具备可写权限，并能满足容器运行用户的 UID/GID 映射。
 6. 如果 `NFS_SERVER` 本身就是部署节点，且导出目录已经是该机本地目录，`prepare-host.sh` 会自动改用 `bind mount`，避免节点对自己再次发起 NFS 挂载。
 7. 这个部署包默认保留宿主机 SSH `22` 给系统管理，GitLab SSH 改为容器内 `22` 映射到宿主机 `2222`；负载均衡器需要把外部 Git SSH 流量转发到两台 GitLab 节点的 `2222`。
@@ -54,7 +54,7 @@ cp inventory.env.example inventory.env
 其中 `GITLAB_EXTERNAL_URL` 的规则是：
 
 - 有 `VIP / LB IP` 时，写统一入口 IP
-- 没有 `VIP / LB IP` 时，两台节点都统一写 `http://27.204.101.25`
+- 没有 `VIP / LB IP` 时，两台节点都统一写 `http://192.169.110.25`
 
 3. 确保当前机器可以免密 SSH 到三台节点，并且远端具备 `sudo` 权限。
 
@@ -80,12 +80,12 @@ bash scripts/check-status.sh node25
 
 5. 部署顺序会自动按下面执行：
 
-- `27.204.101.29`、`27.204.101.25`、`27.204.101.26`：先同步脚本，并执行初始化检查
+- `192.169.110.29`、`192.169.110.25`、`192.169.110.26`：先同步脚本，并执行初始化检查
 - 初始化时如果发现旧容器或持久化目录仍有文件，会先停止旧容器、仅备份持久化目录数据，然后清理旧状态
-- `27.204.101.29`：准备环境并启动 PostgreSQL + Sentinel
-- `27.204.101.25`：准备环境并启动 Redis + Sentinel + GitLab
-- `27.204.101.25`：等待 GitLab 首次初始化，导出 `gitlab-secrets.json` 与 SSH host key
-- `27.204.101.26`：准备环境并导入公共密钥后启动 Redis + Sentinel + GitLab
+- `192.169.110.29`：准备环境并启动 PostgreSQL + Sentinel
+- `192.169.110.25`：准备环境并启动 Redis + Sentinel + GitLab
+- `192.169.110.25`：等待 GitLab 首次初始化，导出 `gitlab-secrets.json` 与 SSH host key
+- `192.169.110.26`：准备环境并导入公共密钥后启动 Redis + Sentinel + GitLab
 
 ## PostgreSQL 配置落盘
 
@@ -131,7 +131,6 @@ sudo bash scripts/deploy-node.sh node26
 - PostgreSQL 节点：`5432/tcp`、`26379/tcp`
 - NFS：按你现有服务开放
 
-## 建议的后续补强
 
 1. PostgreSQL 至少增加一台副本节点，再引入 Patroni/repmgr 或托管数据库。
 2. 仓库存储改为本地 SSD，并用 Gitaly Cluster/Praefect 做真正的 GitLab 仓库高可用。
